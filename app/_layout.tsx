@@ -1,24 +1,22 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+import { Tabs } from 'expo-router';
+import { PomodoroProvider } from '../src/context/PomodoroContext';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <PomodoroProvider>
+      <Tabs
+        screenOptions={{
+          tabBarStyle: { backgroundColor: '#1a1a2e', borderTopColor: 'rgba(255,255,255,0.1)' },
+          tabBarActiveTintColor: '#e94560',
+          tabBarInactiveTintColor: 'rgba(255,255,255,0.4)',
+          headerStyle: { backgroundColor: '#1a1a2e' },
+          headerTintColor: '#fff',
+        }}
+      >
+        <Tabs.Screen name="index"    options={{ title: 'Timer',    tabBarLabel: 'Timer' }} />
+        <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarLabel: 'Settings' }} />
+        <Tabs.Screen name="history"  options={{ title: 'History',  tabBarLabel: 'History' }} />
+      </Tabs>
+    </PomodoroProvider>
   );
 }
