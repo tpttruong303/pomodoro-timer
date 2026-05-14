@@ -1,7 +1,9 @@
+import { loadSound, playCompleteSound, unloadSound } from '../utils/sound';
+import { loadSettings, saveSettings, saveSession } from '../utils/storage';
+import { Session } from '../types';
 import { createContext, useContext, useState, useRef, useEffect, useCallback, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { Phase, PomodoroSettings, PomodoroState } from '../types';
-import { loadSettings, saveSettings } from '../utils/storage';
 import {
   scheduleTimerNotification,
   cancelTimerNotification,
@@ -36,20 +38,28 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [completedSessions, setCompletedSessions] = useState<number>(0);
 
+  // Refs so interval callbacks always see latest values
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<number | null>(null);
-  const timeRemainingRef = useRef<number>(timeRemaining);
-  const phaseRef = useRef<Phase>(phase);
-  const settingsRef = useRef<PomodoroSettings>(settings);
+  const phaseRef = useRef<Phase>('work');
+  const settingsRef = useRef<PomodoroSettings>(DEFAULT_SETTINGS);
+  const completedSessionsRef = useRef<number>(0);
+  const timeRemainingRef = useRef<number>(DEFAULT_SETTINGS.workDuration);
 
-  // Keep refs in sync
-  useEffect(() => { timeRemainingRef.current = timeRemaining; }, [timeRemaining]);
+  // Keep all refs in sync with state
   useEffect(() => { phaseRef.current = phase; }, [phase]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { completedSessionsRef.current = completedSessions; }, [completedSessions]);
+  useEffect(() => { timeRemainingRef.current = timeRemaining; }, [timeRemaining]);
 
-  // Request permission on startup
+  // Request notification permission on startup
   useEffect(() => {
     requestNotificationPermission();
+  }, []);
+
+  useEffect(() => {
+    loadSound();
+    return () => { unloadSound(); };
   }, []);
 
   // Load saved settings on startup
@@ -57,7 +67,9 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
     loadSettings().then(saved => {
       if (saved) {
         setSettings(saved);
+        settingsRef.current = saved;
         setTimeRemaining(saved.workDuration);
+        timeRemainingRef.current = saved.workDuration;
       }
     });
   }, []);
@@ -65,15 +77,16 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   // Background drift fix
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active' && startedAtRef.current !== null) {
+      if (state === 'active' && startedAtRef.current !== null && isRunning) {
         const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
         const corrected = Math.max(0, timeRemainingRef.current - elapsed);
         setTimeRemaining(corrected);
+        timeRemainingRef.current = corrected;
         startedAtRef.current = Date.now();
       }
     });
     return () => subscription.remove();
-  }, []);
+  }, [isRunning]);
 
   const getDuration = useCallback((p: Phase, s: PomodoroSettings): number => {
     if (p === 'work') return s.workDuration;
@@ -88,13 +101,33 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const advancePhase = useCallback((
-    currentPhase: Phase,
-    currentCompleted: number,
-    currentSettings: PomodoroSettings
-  ) => {
-    stopInterval();
-    setIsRunning(false);
+  // Uses refs directly so it always has latest values inside interval
+  const advancePhase = useCallback(() => {
+    const currentPhase = phaseRef.current;
+    const currentCompleted = completedSessionsRef.current;
+    const currentSettings = settingsRef.current;
+
+    // Save session and play sound on work completion
+    if (currentPhase === 'work') {
+      const session: Session = {
+        id: Date.now().toString(),
+        date: new Date().toISOString(),
+        phase: currentPhase,
+        durationSeconds: currentSettings.workDuration,
+        completed: true,
+      };
+      saveSession(session).catch(() => {});
+
+      // Play sound only if enabled in settings
+      if (currentSettings.soundEnabled) {
+        playCompleteSound().catch(() => {});
+      }
+    } else {
+      // Also play sound when break ends
+      if (currentSettings.soundEnabled) {
+        playCompleteSound().catch(() => {});
+      }
+    }
 
     let nextPhase: Phase;
     let nextCompleted = currentCompleted;
@@ -108,35 +141,37 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
       nextPhase = 'work';
     }
 
-    setCompletedSessions(nextCompleted);
+    const nextDuration = getDuration(nextPhase, currentSettings);
+
+    phaseRef.current = nextPhase;
+    completedSessionsRef.current = nextCompleted;
+    timeRemainingRef.current = nextDuration;
+    startedAtRef.current = null;
+
     setPhase(nextPhase);
-    setTimeRemaining(getDuration(nextPhase, currentSettings));
-  }, [stopInterval, getDuration]);
+    setCompletedSessions(nextCompleted);
+    setTimeRemaining(nextDuration);
+    setIsRunning(false);
+    stopInterval();
+  }, [getDuration, stopInterval]);
 
   const start = useCallback(() => {
     setIsRunning(true);
     startedAtRef.current = Date.now();
 
-    // Schedule notification for when this session ends
     scheduleTimerNotification(phaseRef.current, timeRemainingRef.current);
 
     intervalRef.current = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          setPhase(p => {
-            setCompletedSessions(c => {
-              setSettings(s => {
-                advancePhase(p, c, s);
-                return s;
-              });
-              return c;
-            });
-            return p;
-          });
-          return 0;
-        }
-        return prev - 1;
-      });
+      const next = timeRemainingRef.current - 1;
+      timeRemainingRef.current = next;
+
+      if (next <= 0) {
+        setTimeRemaining(0);
+        cancelTimerNotification();
+        advancePhase();
+      } else {
+        setTimeRemaining(next);
+      }
     }, 1000);
   }, [advancePhase]);
 
@@ -144,29 +179,23 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
     stopInterval();
     setIsRunning(false);
     startedAtRef.current = null;
-    cancelTimerNotification();   // cancel alert since timer is paused
+    cancelTimerNotification();
   }, [stopInterval]);
 
   const reset = useCallback(() => {
-    pause();
-    setSettings(s => {
-      setTimeRemaining(getDuration(phaseRef.current, s));
-      return s;
-    });
-  }, [pause, getDuration]);
+    stopInterval();
+    cancelTimerNotification();
+    setIsRunning(false);
+    startedAtRef.current = null;
+    const duration = getDuration(phaseRef.current, settingsRef.current);
+    timeRemainingRef.current = duration;
+    setTimeRemaining(duration);
+  }, [stopInterval, getDuration]);
 
   const skip = useCallback(() => {
-    cancelTimerNotification();   // cancel current session's alert
-    setPhase(p => {
-      setCompletedSessions(c => {
-        setSettings(s => {
-          advancePhase(p, c, s);
-          return s;
-        });
-        return c;
-      });
-      return p;
-    });
+    cancelTimerNotification();
+    advancePhase();
+    startedAtRef.current = null;
   }, [advancePhase]);
 
   const updateSettings = useCallback((newSettings: PomodoroSettings) => {
@@ -175,10 +204,19 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
     setIsRunning(false);
     setCompletedSessions(0);
     setPhase('work');
-    setTimeRemaining(newSettings.workDuration);
+
+    const duration = newSettings.workDuration;
+    setTimeRemaining(duration);
+
+    // Update refs immediately
+    phaseRef.current = 'work';
+    settingsRef.current = newSettings;
+    completedSessionsRef.current = 0;
+    timeRemainingRef.current = duration;
+    startedAtRef.current = null;
+
     setSettings(newSettings);
     saveSettings(newSettings);
-    startedAtRef.current = null;
   }, [stopInterval]);
 
   const progress = timeRemaining / getDuration(phase, settings);

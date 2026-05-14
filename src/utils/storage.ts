@@ -6,7 +6,6 @@ const KEYS = {
   history:  'pomodoro_history',
 };
 
-// Time conversion helpers
 export function toTimeValue(totalSeconds: number): TimeValue {
   return {
     minutes: Math.floor(totalSeconds / 60),
@@ -30,11 +29,15 @@ export async function loadSettings(): Promise<PomodoroSettings | null> {
 export async function saveSession(session: Session): Promise<void> {
   const raw = await AsyncStorage.getItem(KEYS.history);
   const history: Session[] = raw ? JSON.parse(raw) : [];
-  history.unshift(session);
+  history.unshift(session);               // newest first
   await AsyncStorage.setItem(KEYS.history, JSON.stringify(history));
 }
 
 export async function loadHistory(): Promise<Session[]> {
   const raw = await AsyncStorage.getItem(KEYS.history);
   return raw ? JSON.parse(raw) : [];
+}
+
+export async function clearHistory(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.history);
 }

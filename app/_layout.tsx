@@ -13,9 +13,10 @@ export default function RootLayout() {
           headerTintColor: '#fff',
         }}
       >
-        <Tabs.Screen name="index"    options={{ title: 'Timer',    tabBarLabel: 'Timer' }} />
-        <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarLabel: 'Settings' }} />
-        <Tabs.Screen name="history"  options={{ title: 'History',  tabBarLabel: 'History' }} />
+        <Tabs.Screen name="index"    options={{ title: 'Timer',   tabBarLabel: 'Timer' }} />
+        <Tabs.Screen name="settings" options={{ title: 'Settings',tabBarLabel: 'Settings' }} />
+        <Tabs.Screen name="history"  options={{ title: 'History', tabBarLabel: 'History' }} />
+        <Tabs.Screen name="stats"    options={{ title: 'Stats',   tabBarLabel: 'Stats' }} />
       </Tabs>
     </PomodoroProvider>
   );

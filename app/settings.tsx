@@ -4,6 +4,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePomodoro } from '../src/context/PomodoroContext';
 import { PomodoroSettings, TimeValue } from '../src/types';
 import { toTimeValue, toTotalSeconds } from '../src/utils/storage';
+import { Switch } from 'react-native';
+
+interface ToggleRowProps {
+  label: string;
+  subtitle: string;
+  value: boolean;
+  onToggle: (val: boolean) => void;
+}
+
+function ToggleRow({ label, subtitle, value, onToggle }: ToggleRowProps) {
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowText}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ false: 'rgba(255,255,255,0.1)', true: '#e94560' }}
+        thumbColor="#fff"
+      />
+    </View>
+  );
+}
 
 interface StepperProps {
   value: number;
@@ -150,6 +175,22 @@ export default function SettingsScreen() {
             onIncrement={() => setDraft(p => ({ ...p, sessionsBeforeLongBreak: p.sessionsBeforeLongBreak + 1 }))}
           />
         </View>
+
+        <Text style={styles.sectionTitle}>Preferences</Text>
+
+        <ToggleRow
+          label="Sound"
+          subtitle="Play a sound when session ends"
+          value={draft.soundEnabled}
+          onToggle={val => setDraft(p => ({ ...p, soundEnabled: val }))}
+        />
+
+        <ToggleRow
+          label="Vibration"
+          subtitle="Haptic feedback on actions"
+          value={draft.vibrationEnabled}
+          onToggle={val => setDraft(p => ({ ...p, vibrationEnabled: val }))}
+        />
 
         {hasChanges ? (
           <View style={styles.actions}>

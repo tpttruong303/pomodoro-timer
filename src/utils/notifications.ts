@@ -5,11 +5,10 @@ import { Phase } from '../types';
 // How notifications behave when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
   }),
 });
 
@@ -33,6 +32,8 @@ export async function scheduleTimerNotification(
   phase: Phase,
   seconds: number
 ): Promise<void> {
+  if (seconds < 2) return;
+
   // Cancel any previous pending notification first
   await cancelTimerNotification();
 
@@ -49,11 +50,13 @@ export async function scheduleTimerNotification(
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
     },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds,
-      repeats: false,
-    },
+    trigger: seconds > 0
+    ? {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds,
+        repeats: false,
+      }
+    : null,
   });
 }
 
